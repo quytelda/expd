@@ -1,0 +1,13 @@
+# normal rules
+.*
+*.o
+*.so
+*.patch
+
+# exceptions
+!.gitignore
+
+# temporary files
+*.old
+*~
+\#*#
