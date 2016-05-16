@@ -1,5 +1,4 @@
-/*
- * main.c - Extensible eXchange Protocol Daemon
+/* server.h - EXPd server daemon headers
  * Copyright (C) 2016 Quytelda Kahja
  *
  * This file is part of EXPd.
@@ -18,17 +17,12 @@
  * along with EXPd.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-
-#include "server.h"
-
-int main(int argc, char * argv[])
+struct server_config
 {
-    struct server_config * serv_conf =
-	(struct server_config *) calloc(1, sizeof(struct server_config));
-    serv_conf->port = 3333;
+    int port;
+};
 
-    start_server(serv_conf);
-    return 0;
-}
+#define CLIENT_BACKLOG 40
+
+void start_server(struct server_config *);
+void stop_server(void);
