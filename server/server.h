@@ -17,6 +17,9 @@
  * along with EXPd.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef __SERVER_H
+#define __SERVER_H
+
 struct server_config
 {
     int port;
@@ -24,5 +27,7 @@ struct server_config
 
 #define CLIENT_BACKLOG 40
 
-void start_server(struct server_config *);
+void start_server(struct server_config *) __attribute__ ((noreturn));
 void stop_server(void);
+
+#endif /* __SERVER_H */
