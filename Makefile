@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS=-Wall
 
 BIN=expd
-SRCS=server/main.c server/server.c
+SRCS=server/main.c server/expd.c
 OBJS=$(SRCS:.c=.o)
 
 .PHONY: clean

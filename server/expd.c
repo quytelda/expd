@@ -1,5 +1,5 @@
 /*
- * server.c - EXPd server daemon
+ * expd.c - EXPd server daemon
  * Copyright (C) 2016 Quytelda Kahja
  *
  * This file is part of EXPd.
@@ -27,7 +27,7 @@
 #include <arpa/inet.h>
 #include <sys/epoll.h>
 
-#include "server.h"
+#include "expd.h"
 
 #define EPOLL_MAX_EVENTS 64
 #define EPOLL_TIMEOUT -1

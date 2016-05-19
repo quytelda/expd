@@ -1,5 +1,4 @@
-/*
- * main.c - Extensible eXchange Protocol Daemon
+/* main.c - Extensible eXchange Protocol Daemon
  * Copyright (C) 2016 Quytelda Kahja
  *
  * This file is part of EXPd.
@@ -21,7 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "server.h"
+#include "expd.h"
 
 int main(int argc, char * argv[])
 {

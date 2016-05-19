@@ -1,4 +1,4 @@
-/* server.h - EXPd server daemon headers
+/* expd.h - EXPd server daemon headers
  * Copyright (C) 2016 Quytelda Kahja
  *
  * This file is part of EXPd.
@@ -17,8 +17,8 @@
  * along with EXPd.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __SERVER_H
-#define __SERVER_H
+#ifndef __EXPD_H
+#define __EXPD_H
 
 struct server_config
 {
@@ -30,4 +30,4 @@ struct server_config
 void start_server(struct server_config *) __attribute__ ((noreturn));
 void stop_server(void);
 
-#endif /* __SERVER_H */
+#endif /* __EXPD_H */
