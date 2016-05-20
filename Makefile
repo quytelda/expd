@@ -1,11 +1,11 @@
 CC=gcc
-CFLAGS=-Wall
+CFLAGS=-Wall -pthread
 
 BIN=expd
 SRCS=server/main.c server/expd.c
 OBJS=$(SRCS:.c=.o)
 
-.PHONY: clean
+.PHONY: clean debug
 
 all: $(BIN)
 

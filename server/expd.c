@@ -22,18 +22,22 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <errno.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
 
 #include "expd.h"
+#include "debug.h"
 
 #define EPOLL_MAX_EVENTS 64
 #define EPOLL_TIMEOUT -1
 
 #define IN_BUFSIZE 1024
 
+static int quit = 0;
+static pthread_t accept_thread;
 static int sock_fd, epoll_fd;
 
 /**
@@ -67,24 +71,32 @@ static int setup_socket(int port)
 }
 
 /**
- * accept_client() - Accept a new client from the connection queue.
- * Calls accept() to accept a new client in the queue, which is
- * assumed to be ready.
+ * accept_client() - Accept new clients from the connection queue.
+ * Repeatedly calls accept() to accept new clients in the queue, which blocks
+ * until a new client is ready.  This function is intended to be run in a pthread
+ * and should never return.
  */
-static void accept_client(void)
+static void * accept_client(void * arg)
 {
-    int peer_fd = accept(sock_fd, NULL, NULL);
-    if(peer_fd < 0)
+    while(!quit)
     {
-	fprintf(stderr, "Failed to accept client connection (errno %d).\n", errno);
-	return;
+	int peer_fd = accept(sock_fd, NULL, NULL);
+	if(quit)
+	    return NULL;
+	else if(peer_fd < 0)
+	    continue_with_errno("Failed to accept client connection");
+
+	struct epoll_event * peer_fd_ev = calloc(1, sizeof(struct epoll_event));
+	if(!peer_fd_ev)
+	    continue_with_errno("Unable to allocate memory");
+
+	peer_fd_ev->events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLET;
+	peer_fd_ev->data.fd = peer_fd;
+	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, peer_fd, peer_fd_ev) < 0)
+	    print_errno("Failed to add epoll monitor");
     }
 
-    struct epoll_event * peer_fd_ev = calloc(1, sizeof(struct epoll_event));
-    peer_fd_ev->events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLET;
-    peer_fd_ev->data.fd = peer_fd;
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, peer_fd, peer_fd_ev) < 0)
-	fprintf(stderr, "Failed to add epoll monitor (errno %d).\n", errno);
+    return NULL;
 }
 
 /**
@@ -99,10 +111,11 @@ static void handle_client_event(struct epoll_event event)
     if(event.events & (EPOLLHUP | EPOLLRDHUP)) // client hung up
     {
 	if(close(event.data.fd) < 0)
-	    fprintf(stderr, "Failed to close client socket (errno %d).\n", errno);
+	    print_errno("Failed to close client socket");
     }
     else // data was received
     {
+	/* TODO: calloc this buffer */
 	char buffer[IN_BUFSIZE];
 	bzero(buffer, IN_BUFSIZE);
 
@@ -114,6 +127,8 @@ static void handle_client_event(struct epoll_event event)
 	}
 
 	printf("%s", buffer);
+	if(strncmp(buffer, "DIE", 3) == 0)
+	    stop_server();
     }
 }
 
@@ -121,52 +136,60 @@ static void handle_client_event(struct epoll_event event)
  * start_server() - Launch the server daemon
  * @config The server configuration options to use on startup
  * Run the server daemon with the provided configuration.
+ * TODO: should this return or not?
  */
 void start_server(struct server_config * config)
 {
-    // set up sockets to listen for clients
+#ifdef DEBUG
+    puts("* Starting server...");
+#endif
+
+    /* 
+     * Set up sockets to listen for clients.
+     * We want to accept connection in parellel to handling events,
+     * so we will launch a new pthread to handle that socket.
+     */
     sock_fd = setup_socket(config->port);
     if(sock_fd < 0)
-    {
-	fprintf(stderr, "Unable to open listening socket (errno %d)\n.", errno);
-	exit(1);
-    }
+	exit_with_errno("Unable to open listening socket");
+
+    int err = pthread_create(&accept_thread, NULL, accept_client, NULL);
+    if(err)
+	exit_with_errno("Unable to create client accept thread");
 
     // set up epoll interface
     epoll_fd = epoll_create1(0);
     if(epoll_fd < 0)
-    {
-	fprintf(stderr, "Unable to create epoll interface (errno %d)\n.", errno);
-	exit(1);
-    }
+	exit_with_errno("Unable to create epoll interface");
 
-    struct epoll_event sock_connect_ev =
-    {
-	.events  = EPOLLIN,
-	.data.fd = sock_fd,
-    };
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock_fd, &sock_connect_ev) < 0)
-    {
-	fprintf(stderr, "Failed to configure epoll (errno %d).\n", errno);
-	exit(1);
-    }
-
-    // epoll event loop
+    /*
+     * This is the main event loop for the Epoll instance.
+     * Loop waiting for events until the server is exited.
+     * XXX: should this start *before* accept() is called?
+     */
+#ifdef DEBUG
+    puts("* Entering primary event loop");
+#endif
     int quantity;
     struct epoll_event * events =
 	(struct epoll_event *) malloc(sizeof(struct epoll_event));
-    for(;;)
+    if(!events) exit_with_errno("Failed to allocate space");
+
+    while(!quit)
     {
 	quantity = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
+	if(quantity < 0)
+	    continue_with_errno("An error occurred while waiting for events");
 
 	for(int i = 0; i < quantity; i++)
-	{
-	    if(events[i].data.fd == sock_fd)
-		accept_client();
-	    else
-		handle_client_event(events[i]);
-	}
+	    handle_client_event(events[i]);
     }
+
+#ifdef DEBUG
+    puts("* Exiting server...");
+#endif
+
+    exit(0);
 }
 
 /**
@@ -175,5 +198,18 @@ void start_server(struct server_config * config)
  */
 void stop_server(void)
 {
+    quit = 1;
+
+    // stop accepting new clients
+    if(shutdown(sock_fd, SHUT_RDWR) < 0)
+    {
+	print_errno("Failed to close accept() socket");
+	goto cleanup_epoll;
+    }
+
+    close(sock_fd);
+    pthread_join(accept_thread, NULL);
+
+cleanup_epoll:
     close(epoll_fd);
 }
