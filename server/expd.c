@@ -80,12 +80,10 @@ static void accept_client(void)
 	return;
     }
 
-    struct epoll_event peer_fd_ev =
-    {
-	.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLET,
-	.data.fd = peer_fd,
-    };
-    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, peer_fd, &peer_fd_ev) < 0)
+    struct epoll_event * peer_fd_ev = calloc(1, sizeof(struct epoll_event));
+    peer_fd_ev->events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLET;
+    peer_fd_ev->data.fd = peer_fd;
+    if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, peer_fd, peer_fd_ev) < 0)
 	fprintf(stderr, "Failed to add epoll monitor (errno %d).\n", errno);
 }
 
