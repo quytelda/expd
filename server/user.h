@@ -21,6 +21,8 @@
 
 #include <arpa/inet.h>
 
+#define ANON_USERNAME "anonymous"
+
 struct exp_user
 {
     int sid, uid;
