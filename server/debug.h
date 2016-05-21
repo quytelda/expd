@@ -36,7 +36,7 @@
 /* return_with_errno() - output an error message, then return
  * return_value_with_errno() - same as return_with_errno, but returns a value
  * continue_with_errno() - same as return_with_errno, but continues a loop
- * exit_with_errno() - same as return_with_errno, but calls exit(1)
+ * leave_with_errno() - same as return_with_errno, but jumps to the label 'leave'
  *
  * Calls print_errno() to output an error message, then returns from the caller.
  *
@@ -45,7 +45,7 @@
  */
 #define return_with_errno(message)              do { print_errno(message); return;       } while(0)
 #define return_value_with_errno(message, value) do { print_errno(message); return value; } while(0)
-#define exit_with_errno(message)                do { print_errno(message); exit(1);      } while(0)
+#define leave_with_errno(message)               do { print_errno(message); goto leave;   } while(0)
 #define continue_with_errno(message)            do { print_errno(message); continue;     } while(0)
 
 #endif /* __DEBUG_H */

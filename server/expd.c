@@ -21,19 +21,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
 #include <string.h>
 #include <pthread.h>
-#include <sys/socket.h>
-#include <errno.h>
-#include <arpa/inet.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include "expd.h"
 #include "debug.h"
 
 #define EPOLL_MAX_EVENTS 64
 #define EPOLL_TIMEOUT -1
-
 #define IN_BUFSIZE 1024
 
 static int quit = 0;
@@ -71,12 +70,12 @@ static int setup_socket(int port)
 }
 
 /**
- * accept_client() - Accept new clients from the connection queue.
+ * accept_clients() - Accept new clients from the connection queue.
  * Repeatedly calls accept() to accept new clients in the queue, which blocks
  * until a new client is ready.  This function is intended to be run in a pthread
  * and should never return.
  */
-static void * accept_client(void * arg)
+static void * accept_clients(void * arg)
 {
     while(!quit)
     {
@@ -144,6 +143,8 @@ void start_server(struct server_config * config)
     puts("* Starting server...");
 #endif
 
+    int err;
+
     /* 
      * Set up sockets to listen for clients.
      * We want to accept connection in parellel to handling events,
@@ -151,16 +152,16 @@ void start_server(struct server_config * config)
      */
     sock_fd = setup_socket(config->port);
     if(sock_fd < 0)
-	exit_with_errno("Unable to open listening socket");
+	leave_with_errno("Unable to open listening socket");
 
-    int err = pthread_create(&accept_thread, NULL, accept_client, NULL);
+    err = pthread_create(&accept_thread, NULL, accept_clients, NULL);
     if(err)
-	exit_with_errno("Unable to create client accept thread");
+	leave_with_errno("Unable to create client accept thread");
 
     // set up epoll interface
     epoll_fd = epoll_create1(0);
     if(epoll_fd < 0)
-	exit_with_errno("Unable to create epoll interface");
+	leave_with_errno("Unable to create epoll interface");
 
     /*
      * This is the main event loop for the Epoll instance.
@@ -173,7 +174,7 @@ void start_server(struct server_config * config)
     int quantity;
     struct epoll_event * events =
 	(struct epoll_event *) malloc(sizeof(struct epoll_event));
-    if(!events) exit_with_errno("Failed to allocate space");
+    if(!events) leave_with_errno("Failed to allocate space");
 
     while(!quit)
     {
@@ -189,12 +190,16 @@ void start_server(struct server_config * config)
     puts("* Exiting server...");
 #endif
 
-    exit(0);
+leave:
+    err = quit ^ 1;
+    stop_server();
+    exit(err ? 1 : 0);
 }
 
 /**
  * stop_server() - Terminate the server daemon
  * Cleanly exit the running daemon.
+ * TODO: should stop_server even bother checking error codes?
  */
 void stop_server(void)
 {
