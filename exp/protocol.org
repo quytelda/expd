@@ -1,0 +1,76 @@
+#+Title: The Extensible eXchange Protocol
+#+Author: Quytelda Kahja
+
+* Overview
+The Extensible eXchange Protocol allows machines to communicate any discrete form of data in a distributed client/server environment.  The protocol is easily extensible and function in a way that encourages extension and new forms of interaction.
+
+* Syntax
+EXP is designed to use messages and responses to communicate between machines.  Every time, a source machine (hereafter called SOURCE) sends a message, the target machine (hereafter called TARGET) should send a response to SOURCE.
+
+** Message
+The syntax for a message is as follows:
+[:source] <COMMAND> <space seperated parameters...>
+
+Which is subject to the following constraints:
+- COMMAND will be case insensitive.
+- Parameters which contain spaces will be wrapped in double quotes.  To send a double quote use '\"' instead.
+- The source field is optional, and should be used only when the origin of a message would be otherwise ambiguous.  It is prefixed with a ':' (colon) and must preceed COMMAND.
+
+** Response
+The syntax for a response is as follows:
+[:source] <RSP>/<COMMAND> [MESSAGE]
+
+Which is subject to the following constraints:
+- RSP is a 2-digit response code.
+- COMMAND is the command for which this response is being issued.
+- MESSAGE may be provided to clarify the purpose of the status.  It is recommended that servers always provide this field for failures, and that clients report these messages to the user when relevant.
+
+Possible response codes are:
+00 RSP_SUCCESS
+01 RSP_FAILURE
+02 RSP_TARGET_EXISTS
+03 RSP_TARGET_UNKNOWN
+
+* Messages
+** LOGIN
+In order to use the server, clients must have both a username and a nickname.  Uniques IDs will be represents as "nickname/account" or just "account" if they are the same.  Any nickname can be used on the server as long as it is not already in use.  Usernames can be registered using the command REGISTER.  The LOGIN command will allow the use of a registered username, and users that have not logged in must always have the username 'anonymous' or 'unknown'.
+
+Syntax: LOGIN <[nickname/]username> [<password>]
+
+Responses:
+- RSP_SUCCESS (00): Login successful
+- RSP_FAILURE (01): Login failed
+- RSP_TARGET_EXISTS (02): Target nickname already exists
+
+Examples:
+    LOGIN qfox/quykfox p455w0rd
+ => :pallida 00/LOGIN "Login successful (qfox/quykfox)."
+
+    LOGIN qfox/quykfox p455w0
+ => :pallida 01/LOGIN "Login failed (qfox/quykfox)."
+
+    LOGIN mrfish
+ => :pallida 00/LOGIN "Login successful (mrfish/anonymous)."
+
+    LOGIN juicebox
+ => :pallida 02/LOGIN "This name (juicebox) is registered."
+
+** LOGOUT
+LOGOUT can be used to terminate a login session.  It takes no parameters.
+
+Syntax: LOGOUT
+
+Responses:
+- RSP_SUCCESS (00): Logout successful
+- RSP_FAILURE (01): Not logged in
+
+Examples:
+    LOGOUT
+ => :pallida 00/LOGOUT "Logged out (quykfox)."
+
+** JOIN
+** LEAVE
+** REGISTER
+** UNREGISTER
+** MSG
+** SU
