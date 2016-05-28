@@ -25,9 +25,14 @@ struct server_config
     int port;
 };
 
-#define CLIENT_BACKLOG 40
+#define MAX_CLIENTS 1024
 
-void start_server(struct server_config *) __attribute__ ((noreturn));
-void stop_server(void);
+/* Just in case SOMAXCONN is undefined; We prefer the OS's value. */
+#ifndef SOMAXCONN
+    #define SOMAXCONN 128
+#endif
+
+void start_expd(struct server_config *);
+void stop_expd(void);
 
 #endif /* __EXPD_H */

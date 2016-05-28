@@ -19,15 +19,21 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #include "expd.h"
 
 int main(int argc, char * argv[])
 {
-    struct server_config * serv_conf =
+    struct server_config * config =
 	(struct server_config *) calloc(1, sizeof(struct server_config));
-    serv_conf->port = 3333;
+    config->port = 3333;
 
-    start_server(serv_conf);
+    start_expd(config);
+
+    sigset_t sigmask;
+    sigemptyset(&sigmask);
+    sigsuspend(&sigmask);
+
     return 0;
 }

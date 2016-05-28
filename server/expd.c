@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
@@ -36,8 +37,9 @@
 #define IN_BUFSIZE 1024
 
 static int quit = 0;
-static pthread_t accept_thread;
-static int sock_fd, epoll_fd;
+static pthread_t epoll_thread, accept_thread;
+static int accept_fd  = -1;
+static int epoll_fd = -1;
 
 /**
  * setup_socket() - Open and configure a new TCP server socket
@@ -57,31 +59,41 @@ static int setup_socket(int port)
 	.sin_port        = htons(port),
     };
 
-    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(sock_fd < 0) return -1;
+    int accept_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(accept_fd < 0) return -1;
 
-    if(bind(sock_fd, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr_in)) < 0)
+    if(bind(accept_fd, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr_in)) < 0)
 	return -1;
 
-    if(listen(sock_fd, CLIENT_BACKLOG) < 0)
+    if(listen(accept_fd, SOMAXCONN) < 0)
 	return -1;
 
-    return sock_fd;
+    return accept_fd;
 }
 
 /**
- * accept_clients() - Accept new clients from the connection queue.
- * Repeatedly calls accept() to accept new clients in the queue, which blocks
- * until a new client is ready.  This function is intended to be run in a pthread
- * and should never return.
+ * accept_incoming() - Accept new clients from the connection queue.
+ * Repeatedly calls accept() to accept new clients in the queue, which
+ * blocks until a new client is ready.  This function is intended to be run in
+ * a pthread and should never actually return.
+ * It is intended to terminate only when the pthread receives SIGINT.
  */
-static void * accept_clients(void * arg)
+static void * accept_incoming(void * arg)
 {
-    while(!quit)
+    struct server_config * config = (struct server_config *) arg;
+    accept_fd = setup_socket(config->port);
+    if(accept_fd < 0)
+	leave_with_errno("Failed to open accept() socket");
+
+#ifdef DEBUG
+    printf("* Listening for connections on port %d.\n", config->port);
+#endif
+
+    for(;;)
     {
-	int peer_fd = accept(sock_fd, NULL, NULL);
+	int peer_fd = accept(accept_fd, NULL, NULL);
 	if(quit)
-	    return NULL;
+	    break;
 	else if(peer_fd < 0)
 	    continue_with_errno("Failed to accept client connection");
 
@@ -95,6 +107,13 @@ static void * accept_clients(void * arg)
 	    print_errno("Failed to add epoll monitor");
     }
 
+#ifdef DEBUG
+    puts("* Quitting accept() thread.");
+#endif
+
+leave:
+    if(accept_fd > 0)
+	close(accept_fd);
     return NULL;
 }
 
@@ -127,59 +146,39 @@ static void handle_client_event(struct epoll_event event)
 
 	printf("%s", buffer);
 	if(strncmp(buffer, "DIE", 3) == 0)
-	    stop_server();
+	    stop_expd();
     }
 }
 
 /**
- * start_server() - Launch the server daemon
- * @config The server configuration options to use on startup
- * Run the server daemon with the provided configuration.
- * TODO: should this return or not?
+ * do_epoll() - manage client connections using the Epoll inteface
+ * Create a new epoll instance that will be used to manage client connections.
+ * Then loop forever calling epoll_wait() to listen for client events.
+ * This function is intended to run in a pthread and should never actually return.
+ * It is only intended to exit when the pthread receives SIGINT.
  */
-void start_server(struct server_config * config)
+static void * do_epoll(void * arg)
 {
-#ifdef DEBUG
-    puts("* Starting server...");
-#endif
-
-    int err;
-
-    /* 
-     * Set up sockets to listen for clients.
-     * We want to accept connection in parellel to handling events,
-     * so we will launch a new pthread to handle that socket.
-     */
-    sock_fd = setup_socket(config->port);
-    if(sock_fd < 0)
-	leave_with_errno("Unable to open listening socket");
-
-    err = pthread_create(&accept_thread, NULL, accept_clients, NULL);
-    if(err)
-	leave_with_errno("Unable to create client accept thread");
-
     // set up epoll interface
     epoll_fd = epoll_create1(0);
     if(epoll_fd < 0)
 	leave_with_errno("Unable to create epoll interface");
 
-    /*
-     * This is the main event loop for the Epoll instance.
-     * Loop waiting for events until the server is exited.
-     * XXX: should this start *before* accept() is called?
-     */
 #ifdef DEBUG
-    puts("* Entering primary event loop");
+    puts("* Starting epoll monitor.");
 #endif
+
     int quantity;
     struct epoll_event * events =
 	(struct epoll_event *) malloc(sizeof(struct epoll_event));
     if(!events) leave_with_errno("Failed to allocate space");
 
-    while(!quit)
+    for(;;)
     {
 	quantity = epoll_wait(epoll_fd, events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
-	if(quantity < 0)
+	if(quit)
+	    break;
+	else if(quantity < 0)
 	    continue_with_errno("An error occurred while waiting for events");
 
 	for(int i = 0; i < quantity; i++)
@@ -187,34 +186,80 @@ void start_server(struct server_config * config)
     }
 
 #ifdef DEBUG
-    puts("* Exiting server...");
+    puts("* Quitting epoll monitor thread.");
 #endif
 
 leave:
-    err = quit ^ 1;
-    stop_server();
-    exit(err ? 1 : 0);
+    if(epoll_fd > 0)
+	close(epoll_fd);
+    free(events);
+    return NULL;
 }
 
 /**
- * stop_server() - Terminate the server daemon
- * Cleanly exit the running daemon.
- * TODO: should stop_server even bother checking error codes?
+ * start_expd() - Launch the server daemon
+ * @config The server configuration options to use on startup
+ * Run the server daemon with the provided configuration.
+ * TODO: should this return or not?
  */
-void stop_server(void)
+void start_expd(struct server_config * config)
 {
+    int err;
+
+    /* 
+     * We want to accept connection in parellel to handling events,
+     * so we will launch a new pthread to handle each task.
+     */
+    err = pthread_create(&epoll_thread, NULL, do_epoll, config);
+    if(err)
+	return_with_errno("Unable to create epoll monitoring thread");
+
+    err = pthread_create(&accept_thread, NULL, accept_incoming, config);
+    if(err)
+	return_with_errno("Unable to create client accept thread");
+}
+
+/**
+ * stop_expd() - Terminate the server daemon
+ * Cleanly exit the running daemon.
+ * TODO: should stop_expd even bother checking error codes?
+ */
+void stop_expd(void)
+{
+#ifdef DEBUG
+    puts("* Stopping server.");
+#endif
+
+    // TODO: notify clients of the shutdown
+    // TODO: close client connections
+
+    // "shutting down" flag
     quit = 1;
 
-    // stop accepting new clients
-    if(shutdown(sock_fd, SHUT_RDWR) < 0)
+    // don't accept any more new clients
+    if(!shutdown(accept_fd, SHUT_RDWR))
     {
-	print_errno("Failed to close accept() socket");
-	goto cleanup_epoll;
+	pthread_join(accept_thread, NULL);
+    }
+    else
+    {
+	print_errno("Unable to dismantle accept() socket");
+	pthread_cancel(accept_thread);
+    }
+    close(accept_fd);
+
+    // take down epoll
+    if(!close(epoll_fd))
+    {
+	pthread_join(epoll_thread, NULL);
+    }
+    else
+    {
+	print_errno("Unable to dismantle accept() socket");
+	pthread_cancel(epoll_fd);
     }
 
-    close(sock_fd);
-    pthread_join(accept_thread, NULL);
-
-cleanup_epoll:
-    close(epoll_fd);
+#ifdef DEBUG
+    puts("* All threads have stopped.");
+#endif
 }
