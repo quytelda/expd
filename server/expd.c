@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
@@ -30,6 +31,7 @@
 #include <arpa/inet.h>
 
 #include "expd.h"
+#include "user.h"
 #include "debug.h"
 
 #define EPOLL_MAX_EVENTS 64
@@ -104,6 +106,16 @@ static void * accept_incoming(void * arg)
 	else if(peer_fd < 0)
 	    continue_with_errno("Failed to accept client connection");
 
+	// create a new user
+	newuser = (struct exp_user *) malloc(sizeof(struct exp_user));
+	if(!newuser)
+	    continue_with_errno("Unable to allocate memory");
+	newuser->sid    = peer_fd;
+	newuser->uid    = -1;
+	newuser->authed = false;
+	newuser->fd     = peer_fd;
+	newuser->addr   = (struct sockaddr_storage *) addr;
+
 	/*
 	 * BUG: For some reason, the IPv4 address is always 0.0.0.0
 	 * for the first connection.
@@ -118,7 +130,7 @@ static void * accept_incoming(void * arg)
 	    continue_with_errno("Unable to allocate memory");
 
 	peer_fd_ev->events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLET;
-	peer_fd_ev->data.fd = peer_fd;
+	peer_fd_ev->data.ptr = newuser;
 	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, peer_fd, peer_fd_ev) < 0)
 	    print_errno("Failed to add epoll monitor");
     }
@@ -142,9 +154,11 @@ leave:
  */
 static void handle_client_event(struct epoll_event event)
 {
+    struct exp_user * user = (struct exp_user *) event.data.ptr;
+
     if(event.events & (EPOLLHUP | EPOLLRDHUP)) // client hung up
     {
-	if(close(event.data.fd) < 0)
+	if(close(user->fd) < 0)
 	    print_errno("Failed to close client socket");
     }
     else // data was received
@@ -153,7 +167,7 @@ static void handle_client_event(struct epoll_event event)
 	char buffer[IN_BUFSIZE];
 	bzero(buffer, IN_BUFSIZE);
 
-	int count = read(event.data.fd, &buffer, IN_BUFSIZE);
+	int count = read(user->fd, &buffer, IN_BUFSIZE);
 	if(count < 0)
 	{
 	    fprintf(stderr, "Failed to read from client socket (errno %d).\n", errno);
