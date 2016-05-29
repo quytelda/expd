@@ -62,6 +62,9 @@ static int setup_socket(int port)
     int accept_fd = socket(AF_INET, SOCK_STREAM, 0);
     if(accept_fd < 0) return -1;
 
+    int val = 1;
+    setsockopt(accept_fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(int));
+
     if(bind(accept_fd, (struct sockaddr *) &serv_addr, sizeof(struct sockaddr_in)) < 0)
 	return -1;
 
