@@ -92,13 +92,26 @@ static void * accept_incoming(void * arg)
     printf("* Listening for connections on port %d.\n", config->port);
 #endif
 
+    socklen_t addrlen;
+    struct sockaddr * addr = NULL;
+    struct exp_user * newuser = NULL;
     for(;;)
     {
-	int peer_fd = accept(accept_fd, NULL, NULL);
+	addr = (struct sockaddr *) malloc(sizeof(struct sockaddr));
+	int peer_fd = accept(accept_fd, addr, &addrlen);
 	if(quit)
 	    break;
 	else if(peer_fd < 0)
 	    continue_with_errno("Failed to accept client connection");
+
+	/*
+	 * BUG: For some reason, the IPv4 address is always 0.0.0.0
+	 * for the first connection.
+	 */
+#ifdef DEBUG
+	struct in_addr ipv4_addr = ((struct sockaddr_in *) addr)->sin_addr;
+	printf("=> connection from %s.\n", inet_ntoa(ipv4_addr));
+#endif
 
 	struct epoll_event * peer_fd_ev = calloc(1, sizeof(struct epoll_event));
 	if(!peer_fd_ev)
