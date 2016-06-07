@@ -17,13 +17,11 @@
  * along with EXPd.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __EXPD_H
-#define __EXPD_H
+#ifndef __SERVER_EXPD_H
+#define __SERVER_EXPD_H
 
-struct server_config
-{
-    int port;
-};
+#include "exp/client.h"
+#include "exp/message.h"
 
 #define MAX_CLIENTS 1024
 
@@ -32,7 +30,16 @@ struct server_config
     #define SOMAXCONN 128
 #endif
 
+struct server_config
+{
+    int port;
+};
+
 void start_expd(struct server_config *);
 void stop_expd(void);
 
-#endif /* __EXPD_H */
+int send_client(struct exp_client client, const char * str);
+int msg_client(struct exp_client client, struct exp_message);
+int drop_client(struct exp_client client);
+
+#endif /* __SERVER_EXPD_H */
