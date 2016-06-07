@@ -1,6 +1,7 @@
 # normal rules
 .*
 *.o
+*.gch
 *.so
 *.patch
 
