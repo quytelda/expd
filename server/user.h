@@ -19,7 +19,6 @@
 #ifndef __USER_H
 #define __USER_H
 
-#include <stdbool.h>
 #include <arpa/inet.h>
 
 #define ANON_USERNAME "anonymous"
@@ -29,7 +28,6 @@ struct exp_user
     int sid, uid;
     char * username;
     char * nickname;
-    bool authed;
 
     int fd;
     struct sockaddr_storage * addr;
