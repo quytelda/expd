@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS=-I . -Wall -pthread
 
 BIN=expd
-SRCS=server/main.c server/expd.c
+SRCS=server/main.c server/expd.c exp/message.c
 OBJS=$(SRCS:.c=.o)
 
 .PHONY: clean debug

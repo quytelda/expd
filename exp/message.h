@@ -29,7 +29,7 @@ struct exp_message
     char * argv[];
 };
 
-struct exp_message * parse_message(char * msg);
-char * message_tostr(struct exp_message *);
+struct exp_message * strto_message(const char * str);
+char * message_tostr(const struct exp_message * msg);
 
 #endif /* __EXP_MESSAGE_H */
