@@ -27,6 +27,9 @@ typedef enum { USER_CLASS, SERVER_CLASS } conn_class_t;
 
 struct exp_client
 {
+    int fd;
+    struct sockaddr_storage * addr;
+
     conn_class_t class;
 
     union
@@ -34,6 +37,7 @@ struct exp_client
 	struct exp_user user;
 	struct exp_server server;
     } data;
+
 };
 
 #endif /* __EXP_CLIENT_H */

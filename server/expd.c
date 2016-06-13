@@ -29,8 +29,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#include "expd.h"
-#include "debug.h"
+#include "server/expd.h"
+#include "server/debug.h"
+
+#include "exp/client.h"
 
 #define EPOLL_MAX_EVENTS 64
 #define EPOLL_TIMEOUT -1
@@ -94,18 +96,52 @@ static void * accept_incoming(void * arg)
 
     for(;;)
     {
-	int peer_fd = accept(accept_fd, NULL, NULL);
+	socklen_t sock_size = sizeof(struct sockaddr_storage);
+	struct sockaddr_storage * addr = malloc(sock_size);
+	int peer_fd = accept(accept_fd, (struct sockaddr *) addr, &sock_size);
 	if(quit)
 	    break;
 	else if(peer_fd < 0)
 	    continue_with_errno("Failed to accept client connection");
 
+	// build a new client data structure of the appropriate type
+	// TODO: this should do one thing for users, another for servers
+	struct exp_client * newclient = malloc(sizeof(struct exp_client));
+	newclient->class = USER_CLASS;
+	newclient->fd    = peer_fd;
+	newclient->addr  = addr;
+
+#ifdef DEBUG
+	char addr_str[INET6_ADDRSTRLEN];
+	bzero(addr_str, sizeof(addr_str));
+
+	if(addr->ss_family == AF_INET)
+	{
+	    struct sockaddr_in * ip4_addr = (struct sockaddr_in *) addr;
+	    inet_ntop(addr->ss_family, &ip4_addr->sin_addr, addr_str, sizeof(addr_str));
+	}
+	else if(addr->ss_family == AF_INET6)
+	{
+	    struct sockaddr_in6 * ip6_addr = (struct sockaddr_in6 *) addr;
+	    inet_ntop(addr->ss_family, &ip6_addr->sin6_addr, addr_str, sizeof(addr_str));
+	}
+	else
+	{
+	    fprintf(stderr, " => Connection on unknown protocol.");
+	    continue;
+	}
+
+	printf(" => Connection from %s.\n", addr_str);
+#endif
+
+	// TODO: create user/server object with the correct details
+	
 	struct epoll_event * peer_fd_ev = calloc(1, sizeof(struct epoll_event));
 	if(!peer_fd_ev)
 	    continue_with_errno("Unable to allocate memory");
 
 	peer_fd_ev->events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLET;
-	peer_fd_ev->data.fd = peer_fd;
+	peer_fd_ev->data.ptr = newclient;
 	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, peer_fd, peer_fd_ev) < 0)
 	    print_errno("Failed to add epoll monitor");
     }
@@ -129,9 +165,11 @@ leave:
  */
 static void handle_client_event(struct epoll_event event)
 {
+    struct exp_client * client = (struct exp_client *) event.data.ptr;
+
     if(event.events & (EPOLLHUP | EPOLLRDHUP)) // client hung up
     {
-	if(close(event.data.fd) < 0)
+	if(close(client->fd) < 0)
 	    print_errno("Failed to close client socket");
     }
     else // data was received
@@ -140,7 +178,7 @@ static void handle_client_event(struct epoll_event event)
 	char buffer[IN_BUFSIZE];
 	bzero(buffer, IN_BUFSIZE);
 
-	int count = read(event.data.fd, &buffer, IN_BUFSIZE);
+	int count = read(client->fd, &buffer, IN_BUFSIZE);
 	if(count < 0)
 	{
 	    fprintf(stderr, "Failed to read from client socket (errno %d).\n", errno);

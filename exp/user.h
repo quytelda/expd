@@ -28,9 +28,6 @@ struct exp_user
     int sid, uid;
     char * username;
     char * nickname;
-
-    int fd;
-    struct sockaddr_storage * addr;
 };
 
 #endif /* __USER_H */
