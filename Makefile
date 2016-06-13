@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -pthread
+CFLAGS=-I . -Wall -pthread
 
 BIN=expd
 SRCS=server/main.c server/expd.c

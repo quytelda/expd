@@ -1,4 +1,4 @@
-/* protocol.h - EXP protocol definitions
+/* client.h - EXP client class agnostic features
  * Copyright (C) 2016 Quytelda Kahja
  *
  * This file is part of EXPd.
@@ -17,44 +17,23 @@
  * along with EXPd.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __PROTOCOL_H
-#define __PROTOCOL_H
+#ifndef __EXP_CLIENT_H
+#define __EXP_CLIENT_H
 
 #include "user.h"
 #include "server.h"
 
-#define RSP_SUCCESS        00
-#define RSP_FAILURE        01
-#define RSP_TARGET_EXISTS  02
-#define RSP_TARGET_UNKNOWN 03
+typedef enum { USER_CLASS, SERVER_CLASS } conn_class_t;
 
-typedef enum { SRC_SERVER, SRC_USER } exp_source_t;
-
-struct query
+struct exp_client
 {
-    exp_source_t source_type;
-    union source
+    conn_class_t class;
+
+    union
     {
-	struct exp_user   user;
+	struct exp_user user;
 	struct exp_server server;
-    } source;
-
-    char * command;
-    char * arguments[];
+    } data;
 };
 
-struct response
-{
-    int numeric;
-    char * source;
-    char * command;
-    char * comment;
-};
-
-char * query_to_str(const struct query * qry);
-struct query * str_to_query(const char * str);
-
-char * response_to_str(const struct response * rsp);
-struct response * str_to_response(const char * str);
-
-#endif
+#endif /* __EXP_CLIENT_H */

@@ -1,4 +1,4 @@
-/* expd.h - EXPd server daemon headers
+/* message.h - EXP messages and message parsing
  * Copyright (C) 2016 Quytelda Kahja
  *
  * This file is part of EXPd.
@@ -17,29 +17,19 @@
  * along with EXPd.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __SERVER_EXPD_H
-#define __SERVER_EXPD_H
+#ifndef __EXP_MESSAGE_H
+#define __EXP_MESSAGE_H
 
-#include "exp/client.h"
-#include "exp/message.h"
-
-#define MAX_CLIENTS 1024
-
-/* Just in case SOMAXCONN is undefined; We prefer the OS's value. */
-#ifndef SOMAXCONN
-    #define SOMAXCONN 128
-#endif
-
-struct server_config
+struct exp_message
 {
-    int port;
+    char * source;
+    char * command;
+
+    int argc;
+    char * argv[];
 };
 
-void start_expd(struct server_config *);
-void stop_expd(void);
+struct exp_message * parse_message(char * msg);
+char * message_tostr(struct exp_message *);
 
-int send_client(struct exp_client client, const char * str);
-int msg_client(struct exp_client client, struct exp_message);
-int drop_client(struct exp_client client);
-
-#endif /* __SERVER_EXPD_H */
+#endif /* __EXP_MESSAGE_H */
